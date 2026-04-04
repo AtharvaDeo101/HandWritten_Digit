@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 export function DigitCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -13,14 +13,14 @@ export function DigitCanvas() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size
+    // Logical size used for drawing
     canvas.width = 350;
     canvas.height = 350;
 
-    // Fill with white background
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // White background
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }, []);
@@ -48,7 +48,10 @@ export function DigitCanvas() {
     return null;
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const startDrawing = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ) => {
+    e.preventDefault();
     setIsDrawing(true);
     const coords = getCoordinates(e.nativeEvent as MouseEvent | TouchEvent);
     if (coords) {
@@ -60,7 +63,10 @@ export function DigitCanvas() {
     }
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const draw = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+  ) => {
+    e.preventDefault();
     if (!isDrawing) return;
 
     const coords = getCoordinates(e.nativeEvent as MouseEvent | TouchEvent);
@@ -68,7 +74,7 @@ export function DigitCanvas() {
       const ctx = canvasRef.current?.getContext('2d');
       if (ctx) {
         ctx.strokeStyle = 'black';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 20; // thicker strokes to mimic MNIST
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.lineTo(coords.x, coords.y);
@@ -92,19 +98,20 @@ export function DigitCanvas() {
       const canvas = canvasRef.current;
       if (!canvas) throw new Error('Canvas not found');
 
-      // Convert canvas to blob
       const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => {
-          if (b) resolve(b);
-          else reject(new Error('Failed to create blob'));
-        }, 'image/png');
+        canvas.toBlob(
+          (b) => {
+            if (b) resolve(b);
+            else reject(new Error('Failed to create blob'));
+          },
+          'image/png',
+          1.0
+        );
       });
 
-      // Create form data
       const formData = new FormData();
       formData.append('image', blob, 'digit.png');
 
-      // Send to backend
       const response = await fetch('http://localhost:5000/predict', {
         method: 'POST',
         body: formData,
@@ -123,11 +130,13 @@ export function DigitCanvas() {
       if (result.message === 'Unrecognized digit' || result.prediction === null) {
         setPrediction('Unrecognized digit');
       } else {
-        setPrediction(`Predicted digit: ${result.prediction} (confidence: ${(result.confidence * 100).toFixed(1)}%)`);
+        setPrediction(
+          `Predicted digit: ${result.prediction} (confidence: ${(result.confidence * 100).toFixed(1)}%)`
+        );
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Prediction error:', err);
-      setError(err.message);
+      setError(err.message || 'Unknown error');
       setPrediction('Prediction failed');
     } finally {
       setIsLoading(false);
@@ -182,6 +191,7 @@ export function DigitCanvas() {
             backgroundColor: 'white',
             maxWidth: '100%',
             height: 'auto',
+            touchAction: 'none',
           }}
         />
 

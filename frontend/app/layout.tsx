@@ -26,7 +26,7 @@ export const metadata: Metadata = {
       },
       {
         url: "/7.png",
-        sizes: "48x48",                    // ← Larger size for better visibility
+        sizes: "48x48",                    
         type: "image/png",
       },
     ],

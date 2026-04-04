@@ -1,13 +1,14 @@
+import io
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
-from PIL import Image
+from PIL import Image, ImageOps, ImageFilter
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Enable CORS for all routes
+# CORS
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -15,7 +16,7 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
 
-# Define the same CNN architecture
+# CNN model (same architecture as training)
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
@@ -34,34 +35,84 @@ class CNN(nn.Module):
         x = self.lc2(x)
         return F.log_softmax(x, dim=1)
 
-# Load model
-device = torch.device('cpu')  # Use CPU for web deployment unless you have GPU
+device = torch.device('cpu')
 model = CNN().to(device)
-model.load_state_dict(torch.load(r'C:\Users\deoat\Desktop\DL Miniproject\backend\models\mnist_cnn.pth', map_location=device))
-model.eval()  # Set to evaluation mode
+model.load_state_dict(
+    torch.load(
+        r'C:\\Users\\deoat\\Desktop\\DL Miniproject\\backend\\models\\mnist_cnn.pth',
+        map_location=device
+    )
+)
+model.eval()
 
-transform = transforms.Compose([
-    transforms.ToTensor(),  # Converts to [0,1] range and CxHxW format
-])
+# If you normalized MNIST during training, plug the same mean/std here.
+# For standard MNIST: mean=0.1307, std=0.3081
+mnist_normalize = transforms.Normalize((0.1307,), (0.3081,))
 
-def preprocess_image(image):
-    # image: PIL Image or numpy array (28x28 grayscale)
-    # MNIST has black background (0) and white digits (up to 1.0)
-    # Canvas drawing has white background and black strokes, so we need to invert
-    tensor = transform(image)  # [0,1] range
-    tensor = 1.0 - tensor  # INVERT: black background, white strokes
-    tensor = tensor.unsqueeze(0)  # Add batch dimension: [1, 1, 28, 28]
-    return tensor.to(device)
+base_to_tensor = transforms.ToTensor()
 
-def predict(image):
-    tensor = preprocess_image(image)
+def preprocess_image(pil_img: Image.Image) -> torch.Tensor:
+    """
+    Convert canvas PNG to MNIST-like 28x28 tensor:
+    - Convert to grayscale
+    - Invert (white digit on black background)
+    - Crop to bounding box
+    - Resize to 20x20, then pad to 28x28 and center
+    - Optional blur to smooth strokes
+    - Normalize like MNIST
+    """
+    # 1. Ensure grayscale
+    img = pil_img.convert('L')
+
+    # 2. Invert (canvas: black strokes on white, MNIST: white digit on black)
+    img = ImageOps.invert(img)
+
+    # 3. Binarize lightly to get a clear bounding box
+    img = img.point(lambda x: 0 if x < 50 else 255, 'L')
+
+    # 4. Crop to bounding box of the digit
+    bbox = img.getbbox()
+    if bbox is None:
+        # Empty image
+        img = Image.new('L', (28, 28), 0)
+    else:
+        img = img.crop(bbox)
+
+    # 5. Resize to fit in 20x20, preserving aspect ratio (MNIST-style)
+    max_side = max(img.size)
+    if max_side > 0:
+        scale = 20.0 / max_side
+        new_size = (max(1, int(img.size[0] * scale)),
+                    max(1, int(img.size[1] * scale)))
+        img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+    # 6. Paste into 28x28 and center
+    canvas = Image.new('L', (28, 28), 0)
+    upper_left = ((28 - img.size[0]) // 2, (28 - img.size[1]) // 2)
+    canvas.paste(img, upper_left)
+
+    # 7. Slight blur to smooth jagged strokes (optional but often helps)
+    canvas = canvas.filter(ImageFilter.GaussianBlur(radius=0.5))
+
+    # 8. To tensor in [0,1], shape [1,28,28]
+    tensor = base_to_tensor(canvas)
+
+    # 9. Normalize exactly like during training
+    tensor = mnist_normalize(tensor)
+
+    # 10. Add batch dimension [1,1,28,28]
+    tensor = tensor.unsqueeze(0).to(device)
+    return tensor
+
+
+def predict_from_pil(pil_img: Image.Image):
+    tensor = preprocess_image(pil_img)
     with torch.no_grad():
         output = model(tensor)
-        # Get the probabilities
-        probabilities = torch.exp(output)  # because we used log_softmax
-        # Get the predicted class and the confidence (max probability)
-        confidence, prediction = torch.max(probabilities, dim=1)
-    return prediction.item(), confidence.item()
+        probs = torch.exp(output)
+        conf, pred = torch.max(probs, dim=1)
+    return pred.item(), conf.item()
+
 
 @app.route('/predict', methods=['POST'])
 def predict_digit():
@@ -69,23 +120,29 @@ def predict_digit():
         return jsonify({'error': 'No image provided'}), 400
 
     file = request.files['image']
-    # Open the image
-    img = Image.open(file.stream)
-    # Convert to grayscale if it's not
-    if img.mode != 'L':
-        img = img.convert('L')
-    # Resize to 28x28 if needed (the canvas is 500x500, but model expects 28x28)
-    img = img.resize((28, 28))
-    # Make prediction
+
     try:
-        pred, conf = predict(img)
-        # We'll consider a digit recognized if confidence > 0.6 (lowered threshold for testing)
-        if conf < 0.6:
-            return jsonify({'prediction': None, 'confidence': conf, 'message': 'Unrecognized digit'})
-        else:
-            return jsonify({'prediction': pred, 'confidence': conf})
+        img = Image.open(file.stream)
+
+        pred, conf = predict_from_pil(img)
+
+        # Adjust threshold as you like
+        threshold = 0.4
+        if conf < threshold:
+            return jsonify({
+                'prediction': None,
+                'confidence': conf,
+                'message': 'Unrecognized digit'
+            })
+
+        return jsonify({
+            'prediction': pred,
+            'confidence': conf
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 if __name__ == '__main__':
+    # For production, use a proper WSGI server instead of app.run
     app.run(host='0.0.0.0', port=5000)
