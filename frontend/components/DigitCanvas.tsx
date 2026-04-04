@@ -131,7 +131,7 @@ export function DigitCanvas() {
         setPrediction('Unrecognized digit');
       } else {
         setPrediction(
-          `Predicted digit: ${result.prediction} (confidence: ${(result.confidence * 100).toFixed(1)}%)`
+          `Predicted digit: ${result.prediction}`
         );
       }
     } catch (err: any) {
