@@ -1,0 +1,6 @@
+torch
+os
+torchvision
+PIL
+flask
+huggingface_hub
