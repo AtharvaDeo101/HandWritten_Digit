@@ -7,6 +7,7 @@ export function DigitCanvas() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [prediction, setPrediction] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -16,8 +17,8 @@ export function DigitCanvas() {
     if (!ctx) return;
 
     // Set canvas size
-    canvas.width = 500;
-    canvas.height = 500;
+    canvas.width = 350;
+    canvas.height = 350;
 
     // Fill with white background
     ctx.fillStyle = 'white';
@@ -86,15 +87,49 @@ export function DigitCanvas() {
 
   const handlePredict = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      // Placeholder prediction - in a real app, this would call an ML model
-      const randomDigit = Math.floor(Math.random() * 10);
-      setTimeout(() => {
-        setPrediction(`Predicted digit: ${randomDigit}`);
-        setIsLoading(false);
-      }, 500);
-    } catch (error) {
-      console.error('Prediction error:', error);
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error('Canvas not found');
+
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b) resolve(b);
+          else reject(new Error('Failed to create blob'));
+        }, 'image/png');
+      });
+
+      // Create form data
+      const formData = new FormData();
+      formData.append('image', blob, 'digit.png');
+
+      // Send to backend
+      const response = await fetch('http://localhost:5000/predict', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (result.message === 'Unrecognized digit' || result.prediction === null) {
+        setPrediction('Unrecognized digit');
+      } else {
+        setPrediction(`Predicted digit: ${result.prediction} (confidence: ${(result.confidence * 100).toFixed(1)}%)`);
+      }
+    } catch (err) {
+      console.error('Prediction error:', err);
+      setError(err.message);
+      setPrediction('Prediction failed');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -106,6 +141,7 @@ export function DigitCanvas() {
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       setPrediction(null);
+      setError(null);
     }
   };
 
@@ -193,7 +229,23 @@ export function DigitCanvas() {
           </button>
         </div>
 
-        {prediction && (
+        {error && (
+          <div
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#ffebee',
+              border: '1px solid #f44336',
+              borderRadius: '6px',
+              color: '#d32f2f',
+              fontSize: '14px',
+              fontWeight: 500,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {prediction && !error && (
           <div
             style={{
               padding: '12px 24px',
