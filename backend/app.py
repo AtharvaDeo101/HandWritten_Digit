@@ -1,5 +1,5 @@
 import os
-os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"   
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"  
 
 import torch
 import torch.nn as nn
@@ -7,8 +7,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 from PIL import Image, ImageOps, ImageFilter
 from flask import Flask, request, jsonify
-from huggingface_hub import hf_hub_download   
-
+from huggingface_hub import hf_hub_download  
 
 app = Flask(__name__)
 
@@ -18,7 +17,6 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
-
 
 class CNN(nn.Module):
     def __init__(self):
@@ -38,24 +36,20 @@ class CNN(nn.Module):
         x = self.lc2(x)
         return F.log_softmax(x, dim=1)
 
-
 device = torch.device('cpu')
 model = CNN().to(device)
 
-
 model_path = hf_hub_download(
     repo_id="AtharvaDeo/HandWritten",
-    filename="mnist_cnn.pth",   
+    filename="mnist_cnn.pth",  
     repo_type="model"
 )
 
 model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 
-
 mnist_normalize = transforms.Normalize((0.1307,), (0.3081,))
 base_to_tensor = transforms.ToTensor()
-
 
 def preprocess_image(pil_img: Image.Image) -> torch.Tensor:
     img = pil_img.convert('L')
@@ -92,7 +86,6 @@ def predict_from_pil(pil_img: Image.Image):
         conf, pred = torch.max(probs, dim=1)
     return pred.item(), conf.item()
 
-
 @app.route('/predict', methods=['POST'])
 def predict_digit():
     if 'image' not in request.files:
@@ -118,5 +111,7 @@ def predict_digit():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# CRITICAL CHANGE FOR RENDER: Use PORT environment variable
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))  # Render sets PORT env var
+    app.run(host='0.0.0.0', port=port)
