@@ -1,6 +1,7 @@
 
-# -  DIGIT VISION <img width="150" height="150" alt="download" src="https://github.com/user-attachments/assets/63173070-5ec7-46be-9cc5-05c4837254c9" />
- -
+# - DIGIT VISION -
+<img width="150" height="150" alt="download" src="https://github.com/user-attachments/assets/63173070-5ec7-46be-9cc5-05c4837254c9" />
+ 
 
 DIVIT VISION is as efficient web application which is used for efficient hand written digit recognization. 
 This project implements a Handwritten Digit Recognition System using a Convolutional Neural Network (CNN) trained on the MNIST dataset. The model is capable of accurately predicting digits (0–9) from grayscale images of handwritten numbers.
