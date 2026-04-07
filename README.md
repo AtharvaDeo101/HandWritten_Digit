@@ -40,3 +40,5 @@ URL - https://digit-vision-hazel.vercel.app/
 - MNIST dataset creators
 - Deep learning community and open-source contributors
 
+  
+
